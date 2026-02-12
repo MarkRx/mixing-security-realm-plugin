@@ -1,39 +1,36 @@
 package hudson.security;
 
-import hudson.*;
+import hudson.DescriptorExtensionList;
+import hudson.Extension;
 import hudson.model.Descriptor;
 import hudson.model.User;
 import hudson.model.UserProperty;
 import hudson.model.UserPropertyDescriptor;
-import hudson.security.SecurityRealm.SecurityComponents;
 import hudson.security.captcha.CaptchaSupport;
-import hudson.security.HudsonPrivateSecurityRealm.Details;
+import jakarta.annotation.Nonnull;
 import jenkins.model.Jenkins;
 import jenkins.security.ImpersonatingUserDetailsService2;
 import jenkins.security.SecurityListener;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
-import org.springframework.security.authentication.AnonymousAuthenticationProvider;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.RememberMeAuthenticationProvider;
+import org.jenkinsci.Symbol;
+import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.StaplerRequest;
+import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.AbstractUserDetailsAuthenticationProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.jenkinsci.Symbol;
-import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.StaplerRequest;
 
-import javax.annotation.Nonnull;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 @SuppressWarnings("unused")
@@ -348,7 +345,7 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
         @Override
         public UserProperty newInstance(StaplerRequest req, @Nonnull JSONObject formData) throws FormException {
             if (req == null) {
-                return super.newInstance(null, formData);
+                return super.newInstance((StaplerRequest)null, formData);
             }
             User user = req.findAncestorObject(User.class);
             if (user == null) {
