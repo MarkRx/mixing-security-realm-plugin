@@ -15,6 +15,7 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.AbstractUserDetailsAuthenticationProvider;
@@ -44,6 +45,29 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
     @DataBoundConstructor
     public MixingSecurityRealm(boolean allowsSignup, boolean enableCaptcha, CaptchaSupport captchaSupport, boolean priority) {
         super(allowsSignup, enableCaptcha, captchaSupport);
+        this.priority = priority;
+    }
+
+    /**
+     * Optional additional realms to consult.
+     *
+     * Exposed for configuration via UI and JCasC.
+     */
+    public List<SecurityRealm> getOptionals() {
+        return optionals;
+    }
+
+    @DataBoundSetter
+    public void setOptionals(List<SecurityRealm> optionals) {
+        this.optionals = optionals != null ? new ArrayList<>(optionals) : new ArrayList<>();
+    }
+
+    public boolean isPriority() {
+        return priority;
+    }
+
+    @DataBoundSetter
+    public void setPriority(boolean priority) {
         this.priority = priority;
     }
 
@@ -85,9 +109,12 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
         SecurityComponents securityComponents = new SecurityComponents(
                 authenticationManager,
                 new ImpersonatingUserDetailsService2(this::loadUserByUsername2));
-        if (optionals == null) return securityComponents;
+        if (optionals == null || optionals.isEmpty()) return securityComponents;
         Map<SecurityRealm, SecurityComponents> securityComponentsMap = new HashMap<>();
         for (SecurityRealm securityRealm : optionals) {
+            if (securityRealm == null) {
+                continue;
+            }
             securityComponentsMap.put(securityRealm, securityRealm.createSecurityComponents());
         }
 
@@ -137,9 +164,15 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
         }
 
         private Authentication authenticateOptionals(String name, Authentication authentication) {
+            if (optionals == null || optionals.isEmpty()) {
+                return null;
+            }
             for (SecurityRealm securityRealm : optionals) {
+                if (securityRealm == null) {
+                    continue;
+                }
                 SecurityComponents components = securityComponentsMap.get(securityRealm);
-                if (isOwnedBy(name, components.userDetails2)) {
+                if (components != null && isOwnedBy(name, components.userDetails2)) {
                     logger.fine("SecurityComponents.authentication.isOwnedBy => " + name + " -> " + securityRealm);
                     return components.manager2.authenticate(authentication);
                 }
@@ -190,8 +223,17 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
         }
 
         private UserDetails loadUserByUsernameOptionals(String username) {
+            if (optionals == null || optionals.isEmpty()) {
+                return null;
+            }
             for (SecurityRealm securityRealm : optionals) {
+                if (securityRealm == null) {
+                    continue;
+                }
                 SecurityComponents components = securityComponentsMap.get(securityRealm);
+                if (components == null) {
+                    continue;
+                }
                 try {
                     logger.fine("SecurityComponents.loadUserByUsername.isOwnedBy => " + username + " -> "
                             + securityRealm);
@@ -230,19 +272,29 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
             try {
                 return super.loadUserByUsername2(username);
             } catch (UsernameNotFoundException e) {
-                for (SecurityRealm realm : optionals) {
-                    try {
-                        return realm.loadUserByUsername2(username);
-                    } catch (UsernameNotFoundException ignore) {
+                if (optionals != null) {
+                    for (SecurityRealm realm : optionals) {
+                        if (realm == null) {
+                            continue;
+                        }
+                        try {
+                            return realm.loadUserByUsername2(username);
+                        } catch (UsernameNotFoundException ignore) {
+                        }
                     }
                 }
                 throw e;
             }
         } else {
-            for (SecurityRealm realm : optionals) {
-                try {
-                    return realm.loadUserByUsername2(username);
-                } catch (UsernameNotFoundException ignore) {
+            if (optionals != null) {
+                for (SecurityRealm realm : optionals) {
+                    if (realm == null) {
+                        continue;
+                    }
+                    try {
+                        return realm.loadUserByUsername2(username);
+                    } catch (UsernameNotFoundException ignore) {
+                    }
                 }
             }
             return super.loadUserByUsername2(username);
@@ -281,20 +333,30 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
                 logger.fine("authenticate.isPrivateUser => " + username);
                 return selfAuthenticate(username, password);
             } else {
+                if (optionals != null) {
+                    for (SecurityRealm realm : optionals) {
+                        if (realm == null) {
+                            continue;
+                        }
+                        try {
+                            logger.fine("authenticate.isOwnedBy => " + username + " -> " + realm);
+                            return realm.loadUserByUsername2(username);
+                        } catch (UsernameNotFoundException ignore) {
+                        }
+                    }
+                }
+            }
+        } else {
+            if (optionals != null) {
                 for (SecurityRealm realm : optionals) {
+                    if (realm == null) {
+                        continue;
+                    }
                     try {
                         logger.fine("authenticate.isOwnedBy => " + username + " -> " + realm);
                         return realm.loadUserByUsername2(username);
                     } catch (UsernameNotFoundException ignore) {
                     }
-                }
-            }
-        } else {
-            for (SecurityRealm realm : optionals) {
-                try {
-                    logger.fine("authenticate.isOwnedBy => " + username + " -> " + realm);
-                    return realm.loadUserByUsername2(username);
-                } catch (UsernameNotFoundException ignore) {
                 }
             }
             logger.fine("authenticate.isPrivateUser => " + username);
@@ -385,6 +447,7 @@ public class MixingSecurityRealm extends HudsonPrivateSecurityRealm {
     }
 
     @Extension
+    @Symbol("mixing")
     public static final class DescriptorImpl extends Descriptor<SecurityRealm> {
 
         public final List<SecurityRealm> optionals = new ArrayList<>();
